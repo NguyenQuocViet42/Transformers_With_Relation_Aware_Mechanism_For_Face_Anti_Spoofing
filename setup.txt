@@ -1,1 +1,9 @@
 einops
+transformers
+torch
+numpy
+sklearn
+pandas
+albumentations
+torchvision
+opencv-python
