@@ -24,7 +24,7 @@ class Input_layer(nn.Module):
         super(Input_layer, self).__init__()
         
         
-        self.patch_embedding=nn.Sequential(
+        self.patch_embedding = nn.Sequential(
             # Rearrange('b c (h px) (w py) -> b (h w) (px py c)', px=self.patch_size, py=self.patch_size),
             nn.Linear(self.patch_size*self.patch_size*3, self.embed_dim)
         )
@@ -77,3 +77,102 @@ class MLP(nn.Module):
         x = self.dr_2(x)
         x = self.fc3(x)
         return x
+
+class Decoder_layer(nn.Module):
+    in_channels = 768
+    out_channels = 1
+    
+    def __init__(self):
+        super(Decoder_layer, self).__init__()
+        
+        # Convolutional layers for upsampling
+        self.conv1 = nn.ConvTranspose2d(self.in_channels, 512, kernel_size=4, stride=2, padding=1)
+        self.conv2 = nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1)
+        self.conv3 = nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1)
+        
+        # Normalization layers
+        self.norm1 = nn.BatchNorm2d(512)
+        self.norm2 = nn.BatchNorm2d(256)
+        self.norm3 = nn.BatchNorm2d(128)
+        self.norm4 = nn.BatchNorm2d(64)
+        
+        # Activation function
+        self.relu = nn.ReLU()
+        
+        # Final convolutional layer to get the depth map
+        self.final_conv_1 = nn.Conv2d(128, 64, kernel_size=2, stride=2)
+        self.final_conv_2 = nn.Conv2d(64, self.out_channels, kernel_size=2, stride=2)
+        
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.norm1(x)
+        x = self.relu(x)
+        x = self.conv2(x)
+        x = self.norm2(x)
+        x = self.relu(x)
+        x = self.conv3(x)
+        x = self.norm3(x)
+        x = self.relu(x)
+        x = self.final_conv_1(x)
+        x = self.norm4(x)
+        x = self.relu(x)
+        depth_map = self.final_conv_2(x)
+        return depth_map
+    
+class CRA(nn.Module):
+    C = 768
+    def __init__(self):
+        super( CRA, self).__init__()
+        self.linear_conv_1 = nn.Sequential(
+            nn.Conv2D(in_channels= self.C, out_channels = self.C, kernel_size= 1),
+            nn.BatchNorm1d(self.C),
+            nn.ReLU(),
+        )
+        self.linear_conv_2 = nn.Sequential(
+            nn.Conv2D(in_channels= self.C, out_channels = self.C, kernel_size= 1),
+            nn.BatchNorm1d(self.C),
+            nn.ReLU(),
+        )
+        self.linear_conv_3 = nn.Sequential(
+            nn.Conv2D(in_channels= self.C, out_channels = self.C, kernel_size= 1),
+            # nn.BatchNorm1d(self.C),
+            # nn.ReLU(),
+        )
+        self.linear_conv_4 = nn.Sequential(
+            nn.Conv2D(in_channels = 784, out_channels = 784, kernel_size= 1),
+            # nn.BatchNorm1d(self.C),
+            # nn.ReLU(),
+        )
+        self.linear_conv_5 = nn.Sequential(
+            nn.Conv2D(in_channels= self.C + 784, out_channels = 1, kernel_size= 1),
+            # nn.BatchNorm1d(self.C),
+            # nn.ReLU(),
+        )
+        self.sigmoid = nn.Sigmoid()
+        
+    def forward(self, x, y):
+        # x.shape = batch x 196 x C
+        # y.shape = batch x 196 x C
+        phi_x = self.linear_conv_1(x)   # shape = 196 x C
+        phi_y = self.linear_conv_2(y)   # shape = 196 x C
+        cat_phi = torch.cat((phi_x, phi_y), dim = 1)    # shape = 392 x C
+        A = torch.mm(cat_phi, cat_phi.t())              # shape = 392 x 392
+        
+        R_arr = []
+        for i in range(392):
+            R_arr.append( torch.cat( (A[i, :], A[:, i]), dim = 0 ) )
+        R = torch.stack(R_arr)              # shape = 392 x 784
+        
+        v = self.linear_conv_3(cat_phi)     # shape = 392 x C
+        v_ = self.linear_conv_4(R)          # shape = 392 x 784
+        cat_v = torch.cat((v, v_), dim = 0) # 392 x (784 + C)
+        W = self.linear_conv_5(cat_v)       # 392 x 1
+        
+        for batch in range(x.shape[0]):
+            for i in range(196):
+                x[batch, i, :] = x[batch, i, :] * W[i]
+                y[batch, i, :] = y[batch, i, :] * W[i+196]
+        
+        output = x + y
+        return output
+        
