@@ -124,55 +124,61 @@ class CRA(nn.Module):
     def __init__(self):
         super( CRA, self).__init__()
         self.linear_conv_1 = nn.Sequential(
-            nn.Conv2D(in_channels= self.C, out_channels = self.C, kernel_size= 1),
+            nn.Conv1d(in_channels= self.C, out_channels = self.C, kernel_size= 1),
             nn.BatchNorm1d(self.C),
             nn.ReLU(),
         )
         self.linear_conv_2 = nn.Sequential(
-            nn.Conv2D(in_channels= self.C, out_channels = self.C, kernel_size= 1),
+            nn.Conv1d(in_channels= self.C, out_channels = self.C, kernel_size= 1),
             nn.BatchNorm1d(self.C),
             nn.ReLU(),
         )
         self.linear_conv_3 = nn.Sequential(
-            nn.Conv2D(in_channels= self.C, out_channels = self.C, kernel_size= 1),
+            nn.Conv1d(in_channels= self.C, out_channels = self.C, kernel_size= 1),
             # nn.BatchNorm1d(self.C),
             # nn.ReLU(),
         )
         self.linear_conv_4 = nn.Sequential(
-            nn.Conv2D(in_channels = 784, out_channels = 784, kernel_size= 1),
+            nn.Conv1d(in_channels = 784, out_channels = 784, kernel_size= 1),
             # nn.BatchNorm1d(self.C),
             # nn.ReLU(),
         )
         self.linear_conv_5 = nn.Sequential(
-            nn.Conv2D(in_channels= self.C + 784, out_channels = 1, kernel_size= 1),
+            nn.Conv1d(in_channels= self.C + 784, out_channels = 1, kernel_size= 1),
             # nn.BatchNorm1d(self.C),
             # nn.ReLU(),
         )
         self.sigmoid = nn.Sigmoid()
         
     def forward(self, x, y):
-        # x.shape = batch x 196 x C
-        # y.shape = batch x 196 x C
-        phi_x = self.linear_conv_1(x)   # shape = 196 x C
-        phi_y = self.linear_conv_2(y)   # shape = 196 x C
-        cat_phi = torch.cat((phi_x, phi_y), dim = 1)    # shape = 392 x C
-        A = torch.mm(cat_phi, cat_phi.t())              # shape = 392 x 392
+        x = x.permute(0, 2, 1)          # shape = batch x C x 196
+        y = y.permute(0, 2, 1)          # shape = batch x C x 196
+        phi_x = self.linear_conv_1(x)   # shape = batch C x 196
+        phi_y = self.linear_conv_2(y)   # shape = batch C x 196
+        cat_phi = torch.cat((phi_x, phi_y), dim = 2)    # shape = batch C x 392
         
-        R_arr = []
-        for i in range(392):
-            R_arr.append( torch.cat( (A[i, :], A[:, i]), dim = 0 ) )
-        R = torch.stack(R_arr)              # shape = 392 x 784
+        A_arr = []
+        for batch in range(phi_x.shape[0]):
+            A_arr.append(torch.mm(cat_phi[batch].t(), cat_phi[batch]))
+        A = torch.stack(A_arr)          # shape = batch x 392 x 392
         
-        v = self.linear_conv_3(cat_phi)     # shape = 392 x C
-        v_ = self.linear_conv_4(R)          # shape = 392 x 784
-        cat_v = torch.cat((v, v_), dim = 0) # 392 x (784 + C)
-        W = self.linear_conv_5(cat_v)       # 392 x 1
+        R_batch = []
+        for batch in range(A.shape[0]):
+            R_arr = []
+            for i in range(392):
+                R_arr.append( torch.cat( (A[batch, i, :], A[batch, :, i]), dim = 0 ) )
+            R_batch.append(torch.stack(R_arr))
+        R = torch.stack(R_batch)            # shape = batch x 392 x 784
+        R = R.permute(0, 2, 1)              # shape = batch x 784 x 392
         
+        v = self.linear_conv_3(cat_phi)     # shape = batch x C x 392
+        v_ = self.linear_conv_4(R)          # shape = batch x 784 + 392
+        cat_v = torch.cat((v, v_), dim = 1) # shape = batch x (784 + C) x 392
+        W = self.linear_conv_5(cat_v)       # shape = batch x 1 x 392
         for batch in range(x.shape[0]):
             for i in range(196):
-                x[batch, i, :] = x[batch, i, :] * W[i]
-                y[batch, i, :] = y[batch, i, :] * W[i+196]
+                x[batch, :, i] = x[batch, :, i] * W[batch, 0, i]
+                y[batch, :, i] = y[batch, :, i] * W[batch, 0, i+196]
         
         output = x + y
-        return output
-        
+        return output           # shape = batch x C x 392
