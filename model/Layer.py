@@ -57,23 +57,21 @@ class MLP(nn.Module):
         super(MLP, self).__init__()
         self.fc1 = nn.Linear(768, 4096)
         self.norm_1 = nn.BatchNorm1d(4096)
-        self.gelu_1 = F.gelu()
         self.dr_1 = nn.Dropout(0.5)
         self.fc2 = nn.Linear(4096, 4096)
         self.norm_2 = nn.BatchNorm1d(4096)
-        self.gelu_2 = F.gelu()
         self.dr_2 = nn.Dropout(0.5)
         self.fc3 = nn.Linear(4096, 10)
 
         
-    def foward(self, x):
+    def forward(self, x):
         x = self.fc1(x)
         x = self.norm_1(x)
-        x = self.gelu_1(x)
+        x = F.gelu(x)
         x = self.dr_1(x)
         x = self.fc2(x)
         x = self.norm_2(x)
-        x = self.gelu_2(x)
+        x = F.gelu(x)
         x = self.dr_2(x)
         x = self.fc3(x)
         return x
