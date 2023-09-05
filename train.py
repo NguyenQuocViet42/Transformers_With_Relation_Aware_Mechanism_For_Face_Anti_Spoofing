@@ -27,8 +27,8 @@ def set_random_seeds(random_seed=0):
     
 set_random_seeds(42)
 
-df = pd.read_csv('image_preprocessed/annotation/additional_train_annotation.csv')
-# df = df.iloc[:2000]
+df = pd.read_csv('annotation/train_annotation.csv')
+df = df.iloc[:2000]
 
 # Split Training Set and Validation Set
 num_samples = df.shape[0]
@@ -90,11 +90,11 @@ def train(epochs):
     # optimizer
     # criterion = nn.BCELoss()
     # criterion = nn.CrossEntropyLoss()
-    criterion = CRA_Loss()
+    criterion = CRA_Loss
     model = ViT_CRA()
     
-    train_dataset = CRA_Dataset(train_set, trans = train_transform)
-    val_dataset = CRA_Dataset(val_set, trans = test_transform)
+    train_dataset = CRA_Dataset(train_set, transform = train_transform)
+    val_dataset = CRA_Dataset(val_set, transform = test_transform)
 
     torch.distributed.init_process_group(backend="nccl")
     train_sampler = DistributedSampler(dataset=train_dataset)
@@ -173,3 +173,8 @@ def train(epochs):
     write_matrix_to_txt(train_losses, 'train_loss/' + str(local_rank) + '_train_loss.txt')
     write_matrix_to_txt(val_losses, 'val_loss/' + str(local_rank) + '_val_loss.txt')
     write_matrix_to_txt(val_acces, 'val_accuracy/' + str(local_rank) + '_val_accuracy.txt')
+    
+if __name__ == "__main__":
+    
+    train(60)
+    print('Best_val_accuracy: ', best_val_acc)
