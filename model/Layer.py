@@ -1,14 +1,13 @@
 import torch.nn as nn
 import torch
 from einops.layers.torch import Rearrange
-from transformers import ViTModel
+from transformers import ViTModel, DeiTForImageClassificationWithTeacher
 import torch.nn.functional as F
-
 
 class Input_layer(nn.Module):
     patch_size = 16
     num_patches = (224 // patch_size)**2 + 1
-    embed_dim = 768
+    embed_dim = 192
     
     def flatten_image(self, batch_image):
         output = []
@@ -44,9 +43,10 @@ class Input_layer(nn.Module):
 class Encoder_layer(nn.Module):
     def __init__(self):
         super(Encoder_layer, self).__init__()
-        model_trans = ViTModel.from_pretrained('google/vit-base-patch16-224-in21k')
+        model_trans = DeiTForImageClassificationWithTeacher.from_pretrained('facebook/deit-tiny-distilled-patch16-224')
         list_layer = list(model_trans.children())
-        self.encoder_layer = nn.Sequential(list_layer[1])
+        list_layer = list(list_layer[0].children())[1]
+        self.encoder_layer = nn.Sequential(list_layer)
         
     def forward(self, x):
         x = self.encoder_layer(x)
@@ -55,7 +55,7 @@ class Encoder_layer(nn.Module):
 class MLP(nn.Module):
     def __init__(self):
         super(MLP, self).__init__()
-        self.fc1 = nn.Linear(768, 4096)
+        self.fc1 = nn.Linear(192, 4096)
         self.norm_1 = nn.BatchNorm1d(4096)
         self.dr_1 = nn.Dropout(0.5)
         self.fc2 = nn.Linear(4096, 4096)
@@ -77,7 +77,7 @@ class MLP(nn.Module):
         return x
 
 class Decoder_layer(nn.Module):
-    in_channels = 768
+    in_channels = 192
     out_channels = 1
     
     def __init__(self):
@@ -118,7 +118,7 @@ class Decoder_layer(nn.Module):
         return depth_map
     
 class CRA(nn.Module):
-    C = 768
+    C = 192
     def __init__(self):
         super( CRA, self).__init__()
         self.linear_conv_1 = nn.Sequential(
