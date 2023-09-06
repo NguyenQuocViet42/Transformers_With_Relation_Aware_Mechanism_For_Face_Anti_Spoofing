@@ -46,11 +46,15 @@ class Encoder_layer(nn.Module):
         model_trans = DeiTForImageClassificationWithTeacher.from_pretrained('facebook/deit-tiny-distilled-patch16-224')
         list_layer = list(model_trans.children())
         list_layer = list(list_layer[0].children())[1]
-        self.encoder_layer = nn.Sequential(list_layer)
+        list_layer = list(list(list_layer.children())[0].children())
+        self.list_secquence = [nn.Sequential(i) for i in list_layer] # list 12 Encoder layers
         
     def forward(self, x):
-        x = self.encoder_layer(x)
-        return x.last_hidden_state
+        list_output = []
+        for i in range(12):
+            x = self.list_secquence[i](x)
+            list_output.append(x.last_hidden_state)
+        return list_output
     
 class MLP(nn.Module):
     def __init__(self):
