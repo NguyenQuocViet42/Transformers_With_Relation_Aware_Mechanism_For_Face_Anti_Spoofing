@@ -27,7 +27,7 @@ def set_random_seeds(random_seed=0):
     
 set_random_seeds(42)
 
-df = pd.read_csv('annotation/train_annotation.csv')
+df = pd.read_csv('annotation/depth_train_annotation.csv')
 df = df.iloc[:2000]
 
 # Split Training Set and Validation Set
@@ -44,7 +44,6 @@ val_set = df.iloc[val_set_indices]
 
 # Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 # Valid Function
 def validation(pred, depth_map,y_val, a = 0.4, threshold = 0.5):
@@ -99,8 +98,8 @@ def train(epochs):
     torch.distributed.init_process_group(backend="nccl")
     train_sampler = DistributedSampler(dataset=train_dataset)
 
-    train_dataloader = data.DataLoader(train_dataset, batch_size = 64, sampler = train_sampler, num_workers = 8)
-    valid_dataloader = data.DataLoader(val_dataset, batch_size = 64, num_workers = 8)
+    train_dataloader = data.DataLoader(train_dataset, batch_size = 2, sampler = train_sampler, num_workers = 4)
+    valid_dataloader = data.DataLoader(val_dataset, batch_size = 2, num_workers = 4)
     
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -111,7 +110,7 @@ def train(epochs):
     
     device = torch.device("cuda:{}".format(local_rank))
     model.to(device)
-    ddp_model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=True)
+    ddp_model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
 
     
     lr = 0.01
@@ -126,6 +125,7 @@ def train(epochs):
         val_acc = 0
         
         for x_batch,y_batch, map_batch in train_dataloader:
+            # torch.autograd.set_detect_anomaly(True)
             x_train, y_train, map_train = x_batch, y_batch, map_batch
             # getting the validation set
             #xóa gradients
@@ -133,11 +133,12 @@ def train(epochs):
             # Cho dữ liệu qua model và trả về output cần tìm
             pred, depth_map = ddp_model(x_train.to(device))
             # Tính toán giá trị lỗi và backpropagation
-            loss = criterion(pred, y_train.to(device), depth_map, map_train.to(device))
+            loss = criterion(pred, y_train.to(device), depth_map, map_train.to(device), device)
             loss.backward()
             # torch.distributed.barrier()
             # Cập nhật trọng số
             optimizer.step()
+            torch.autograd.set_detect_anomaly(False)
         lr_schedule.step()
         train_losses.append(loss.item())
         
@@ -146,7 +147,7 @@ def train(epochs):
         for x_batch,y_batch, map_batch in valid_dataloader:
             x_val, y_val, map_val = x_batch, y_batch, map_batch
             pred, depth_map = ddp_model(x_val.to(device))
-            val_loss = criterion(pred, y_val.to(device), depth_map, map_val.to(device))
+            val_loss = criterion(pred, y_val.to(device), depth_map, map_val.to(device), device)
             val_acc = validation(pred, depth_map, y_val.to(device))
         if val_acc > best_val_acc[local_rank]:
             best_val_acc[local_rank] = val_acc

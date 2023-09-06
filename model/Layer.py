@@ -173,10 +173,13 @@ class CRA(nn.Module):
         v_ = self.linear_conv_4(R)          # shape = batch x 784 + 392
         cat_v = torch.cat((v, v_), dim = 1) # shape = batch x (784 + C) x 392
         W = self.linear_conv_5(cat_v)       # shape = batch x 1 x 392
-        for batch in range(x.shape[0]):
-            for i in range(196):
-                x[batch, :, i] = x[batch, :, i] * W[batch, 0, i]
-                y[batch, :, i] = y[batch, :, i] * W[batch, 0, i+196]
+        W_0 = W[:, :, :196]
+        W_1 = W[:, :, 196:]
         
-        output = x + y
+        # for batch in range(x.shape[0]):
+        #     for i in range(196):
+        #         x[batch, :, i] = x[batch, :, i] * W_0[batch, 0, i]
+        #         y[batch, :, i] = y[batch, :, i] * W_1[batch, 0, i]
+        
+        output = x * W_0 + y * W_1
         return output           # shape = batch x C x 392
