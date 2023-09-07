@@ -41,20 +41,24 @@ class Input_layer(nn.Module):
         return output
 
 class Encoder_layer(nn.Module):
-    def __init__(self):
+    C = 192
+    def __init__(self, device):
         super(Encoder_layer, self).__init__()
-        model_trans = DeiTForImageClassificationWithTeacher.from_pretrained('facebook/deit-tiny-distilled-patch16-224')
+        model_trans = DeiTForImageClassificationWithTeacher.from_pretrained('facebook/deit-tiny-distilled-patch16-224').to(device)
         list_layer = list(model_trans.children())
         list_layer = list(list_layer[0].children())[1]
         list_layer = list(list(list_layer.children())[0].children())
-        self.list_secquence = [nn.Sequential(i) for i in list_layer] # list 12 Encoder layers
+        self.list_secquence = [nn.Sequential(i) for i in list_layer] # list 12 Encoder
+        self.batch_norm = nn.LayerNorm((192,), eps=1e-12, elementwise_affine=True)
         
     def forward(self, x):
         list_output = []
         for i in range(12):
-            x = self.list_secquence[i](x)
-            list_output.append(x.last_hidden_state)
-        return list_output
+            x = self.list_secquence[i](x)[0]
+            x = self.batch_norm(x)
+            list_output.append(x)
+        # print(list_output[-1])
+        return torch.stack(list_output)
     
 class MLP(nn.Module):
     def __init__(self):
@@ -78,6 +82,7 @@ class MLP(nn.Module):
         x = F.gelu(x)
         x = self.dr_2(x)
         x = self.fc3(x)
+        x = torch.softmax(x, dim = 1)
         return x
 
 class Decoder_layer(nn.Module):
@@ -119,6 +124,7 @@ class Decoder_layer(nn.Module):
         x = self.norm4(x)
         x = self.relu(x)
         depth_map = self.final_conv_2(x)
+        depth_map = torch.sigmoid(depth_map)
         return depth_map
     
 class CRA(nn.Module):

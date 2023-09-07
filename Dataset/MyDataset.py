@@ -28,12 +28,12 @@ class CRA_Dataset(data.Dataset):
             path_depth_map = "/workspace/personal/vietnq/PRNet/depth_map/" + num_name + '_depth.png'
             face = cv2.imread(path_face)
             depth_map = cv2.imread(path_depth_map, cv2.IMREAD_GRAYSCALE)
-            depth_map = cv2.resize(depth_map, (28, 28))
+            depth_map = cv2.resize(depth_map, (28, 28)) / 255.0
             # depth_map = cv2.cvtColor(depth_map, cv2.COLOR_BGR2GRAY)
         else:
             path_face = "/workspace/personal/vietnq/PRNet/spoof_cropped/" + name
             face = cv2.imread(path_face)
-            depth_map = np.zeros(shape = (1, 28, 28), dtype = float)
+            depth_map = np.zeros(shape = (28, 28), dtype = float)
             
         # Transform
         face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
@@ -52,5 +52,5 @@ class CRA_Dataset(data.Dataset):
         depth_map = torch.tensor(depth_map, dtype = torch.float32)
         # y = torch.from_numpy(y)
         y = torch.tensor(y, dtype = torch.float32)
-        
+        depth_map = depth_map.unsqueeze(0)
         return face, y, depth_map

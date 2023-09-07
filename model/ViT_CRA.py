@@ -8,11 +8,11 @@ import torch.nn as nn
 
 class ViT_CRA(nn.Module):
     C = 192
-    def __init__(self):
+    def __init__(self, device):
         super(ViT_CRA, self).__init__()
         self.input_layer = Layer.Input_layer()
         # Encoder Layers
-        self.encoder_layers = Layer.Encoder_layer()
+        self.encoder_layers = Layer.Encoder_layer(device)
         # self.encoder_layer_2 = Layer.Encoder_layer()
         # self.encoder_layer_3 = Layer.Encoder_layer()
         # self.encoder_layer_4 = Layer.Encoder_layer()

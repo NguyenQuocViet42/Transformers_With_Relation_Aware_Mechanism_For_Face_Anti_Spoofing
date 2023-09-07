@@ -27,8 +27,10 @@ def set_random_seeds(random_seed=0):
     
 set_random_seeds(42)
 
-df = pd.read_csv('annotation/depth_train_annotation.csv')
-df = df.iloc[:2000]
+df = pd.read_csv('annotation/new_depth_train_annotation.csv')
+# df = df[df['spoof type'] != 0]
+# df = df.iloc[:500]
+print("Training size: ", len(df))
 
 # Split Training Set and Validation Set
 num_samples = df.shape[0]
@@ -51,13 +53,15 @@ def validation(pred, depth_map,y_val, a = 0.4, threshold = 0.5):
     count = 0
     for i in range(size):
         # prediction =  torch.argmax(pred[i])
-        live_logit = pred[0]
-        Dmean = torch.sum(depth_map) / (28*28)
+        live_logit = pred[i][0]
+        Dmean = torch.sum(depth_map[i]) / (28*28)
         # if prediction != 0:
         #     prediction = 1
         real = torch.argmax(y_val[i])
-        # if real != 0:
-        #     real = 1
+        
+        if real != 0:
+            real = 1
+        # print(live_logit.item(), Dmean.item())
         Score = a*live_logit + (1-a)*Dmean
         if Score > threshold:
             prediction = 0
@@ -90,7 +94,6 @@ def train(epochs):
     # criterion = nn.BCELoss()
     # criterion = nn.CrossEntropyLoss()
     criterion = CRA_Loss
-    model = ViT_CRA()
     
     train_dataset = CRA_Dataset(train_set, transform = train_transform)
     val_dataset = CRA_Dataset(val_set, transform = test_transform)
@@ -98,8 +101,8 @@ def train(epochs):
     torch.distributed.init_process_group(backend="nccl")
     train_sampler = DistributedSampler(dataset=train_dataset)
 
-    train_dataloader = data.DataLoader(train_dataset, batch_size = 2, sampler = train_sampler, num_workers = 4)
-    valid_dataloader = data.DataLoader(val_dataset, batch_size = 2, num_workers = 4)
+    train_dataloader = data.DataLoader(train_dataset, batch_size = 64, sampler = train_sampler, num_workers = 8)
+    valid_dataloader = data.DataLoader(val_dataset, batch_size = 64, num_workers = 8)
     
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -109,8 +112,9 @@ def train(epochs):
     print("Rank: ", local_rank)
     
     device = torch.device("cuda:{}".format(local_rank))
+    model = ViT_CRA(device)
     model.to(device)
-    ddp_model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
+    ddp_model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=False)
 
     
     lr = 0.01
@@ -125,6 +129,7 @@ def train(epochs):
         val_acc = 0
         
         for x_batch,y_batch, map_batch in train_dataloader:
+            
             # torch.autograd.set_detect_anomaly(True)
             x_train, y_train, map_train = x_batch, y_batch, map_batch
             # getting the validation set
@@ -134,11 +139,12 @@ def train(epochs):
             pred, depth_map = ddp_model(x_train.to(device))
             # Tính toán giá trị lỗi và backpropagation
             loss = criterion(pred, y_train.to(device), depth_map, map_train.to(device), device)
+            # print(loss)
             loss.backward()
             # torch.distributed.barrier()
             # Cập nhật trọng số
             optimizer.step()
-            torch.autograd.set_detect_anomaly(False)
+            # torch.autograd.set_detect_anomaly(False)
         lr_schedule.step()
         train_losses.append(loss.item())
         
